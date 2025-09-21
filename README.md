@@ -14,6 +14,6 @@ There are many online resources where CIF files can be downloaded.
 
 
 ## Step 2: Download OpenSCAD
-The free [OpenSCAD software](https://openscad.org/) can be controlled with python to generate 3D printable files. After downloading, install the program and mentally note where it is installed, as this will be important later.
+The free [OpenSCAD software](https://openscad.org/) can be controlled with python to generate 3D printable files. After downloading, install the OpenSCAD. For windows, the program will automatically look to find OpenSCAD at the path "C:/Program Files/OpenSCAD/openscad.exe", which is the default installation path. (Note, this should be improved; I am thinking to do a check for OpenSCAD at that path and then have a pop up come up if it can't find it. Maybe add a file that contains OpenSCAD path for later use.)
 
-## Step 3: Download LatticetoSTL.rar
+## Step 3: Download LatticetoSTL.zip
