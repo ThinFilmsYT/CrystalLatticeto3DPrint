@@ -39,11 +39,15 @@ Buildplate Length/Width: This gives the max dimensions of the eventual STL file(
 
 Radius: This is the maximum radius of the printed nuclei. (Note, for lattices composed of multiple sized atoms, the largest atom radius will be set to radius, and the other atoms will be proportioned appropiately. Note, the default unit is mm.
 
-Nucleus Scale: This is a scaling factor of the nucleus. As is common with many ball and stick type atomic models, the nuclear radii can be displayed smaller than reality for clarity. This adjsutment allows the scaling of the nucleus from 0 to 1 (0% and 100% of the Radius).
+Nucleus Scale: This is a scaling factor of the nucleus. As is common with many ball and stick type atomic models, the nuclear radii can be displayed smaller than reality for clarity. This adjustment allows the scaling of the nucleus from 0 to 1 (0% and 100% of the Radius).
 
 ### Outputting Files
 Use the Browse button next to the Output Path bar to select where the output files will be places. Then export will begin the STL creation procedure. The program will first make one or more OpenSCAD files. Because traditinoal filiment 3D printing struggles to produce clean spheres, each atom is cut into two hemispheres. The hemispheres are male and female pairs eventually fit together with a friction fit and no additional pieces. The bonds are simply cylinders that fit into cut outs on the hemispheres. An algotithm uses simulated annealing in order to cut the hemispsheres such that the bonds are as far from the hemisphere split as possible. These bonds are laid out after the hemispheres. For many atoms or large radius prints, multiple OpenSCAD files will be generated. In order to keep track of which atom is which within a the lattice, a txt file(s) containing atom data (AtomInfo#.txt) is exported as well. A new txt file will be generated for each OpenSCAD file containing atoms. Similarly BondInfo#.txt will be generated cooresponding to each OpenSCAD files containing bonds.
 
-After the OpenSCAD files have been generated, OpenSCAD is used to convert each file to an STL. This process can be slow, but time is variable and strongly dependent on number of atoms and Curve Resolution. A very rudimentary time estimate is provided in the log to give a guess of how long the conversion will take, but expected time results to only be good to about an order of magnitude.
+After the OpenSCAD files have been generated, OpenSCAD is used to convert each file to an STL. This process can be slow, but time is variable and strongly dependent on number of atoms and Curve Resolution. A very rudimentary time estimate is provided in the log to give a guess of how long the conversion will take, but expect time results to only be good to about an order of magnitude.
+
+While exporting, the program will appear frozen and will not update until exporting is completed.
 
 ### Advanced Mode
+Advanced mode displays many extra adjustable parameters for those with more unsatified with the defaults. Although, the defaults are desogned to be well-suited for most cases.
+
