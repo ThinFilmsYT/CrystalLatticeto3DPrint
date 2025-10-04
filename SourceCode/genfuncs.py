@@ -83,6 +83,7 @@ class Atom:
 
 class Lattice:
     def __init__(self, cif_path,nx,ny,nz,bond_range = 0.1):
+        self.lattice_name = ''
         self.cif_path = cif_path
         self.nx,self.ny,self.nz = nx,ny,nz
         self.bond_range = bond_range # error bars around bond range. for an atom with bond length 1.0 and 1.09 both are included for bond range = .1
@@ -152,6 +153,13 @@ class Lattice:
                             val = val[:val.find('(')]
                         params[k] = float(val)
                 continue
+
+            # Get Lattice chemical name
+            if line.startswith('_chemical_formula_structural'):
+                l = line.replace("'", "").replace('"', '').strip()
+                eles = l.split()[1:]
+                for ele in eles:
+                    self.lattice_name += ele
 
             # Initiate Symmetry mode
             if line.startswith('_symmetry_equiv_pos_as_xyz') or line.startswith('_space_group_symop_operation_xyz'):
@@ -369,14 +377,14 @@ class Lattice:
     def extract_atoms_with_symmetry(self, headers, atoms, sym_ops):
         def eval_sym_op(op, x, y, z):
             coords = {'x': x, 'y': y, 'z': z}
-            op = op.replace(",", "")
+            op = op.replace(",", "") #remove comma
             ops = op.lower().split()[1:]
             result = []
             for term in ops:
-                # print(term)
                 val = eval(term, {}, coords)
                 result.append(val%1)
             return result
+        
         def reflect_about_cell_boundaries(atom_list, decimal_rounding=4):
             """
             Reflects atoms across unit cell boundaries (x, y, z = 0 or 1)
@@ -420,13 +428,20 @@ class Lattice:
                 for xi in x_opts:
                     for yi in y_opts:
                         for zi in z_opts:
-                            if (xi, yi, zi) != (x, y, z):
+                            if (x-xi)**2 + (y-yi)**2 + (z-zi)**2 > 3*10**(-2*decimal_rounding): #distance check to ensure no dupes
                                 mirrored = (label, xi, yi, zi, occ)
                                 if mirrored not in seen:
                                     result.add(mirrored)
 
             return sorted(result)
         
+        def too_close(atom1,atom2,decimal_rounding = 4): #atom of the form (label, x, y, z, occ) or (label, x, y, z)
+            _, x1, y1, z1 = atom1
+            _, x2, y2, z2 = atom2
+            if (x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2 > 3*10**(-2*decimal_rounding):
+                return False
+            return True
+
         label_idx = 0
         #extract indices
         for i,h in enumerate(headers):
@@ -451,9 +466,16 @@ class Lattice:
             for op in sym_ops:
                 x_new, y_new, z_new = eval_sym_op(op, fx, fy, fz)
                 key = (label, round(x_new, 4), round(y_new, 4), round(z_new, 4))
-                if key not in seen:
+                good = True #assume good
+                for op in seen:
+                    if too_close(op,key):
+                        good = False
+                        break
+                    
+                if good:
                     seen.add(key)
                     full_atoms.append((label, x_new, y_new, z_new, occ))
+
         atoms_with_corners = reflect_about_cell_boundaries(full_atoms)
         return atoms_with_corners
 

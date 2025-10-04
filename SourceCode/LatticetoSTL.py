@@ -8,6 +8,7 @@ import HemisphereMaker
 from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d import Axes3D
 from PyQt5 import QtWidgets, QtCore
+import subprocess
 
 def scatter_sphere(ax, x, y, z, r=1, color='b', resolution=15, alpha=0.6):
         """Scatter spheres at x, y, z with radii r (in data units) on 3D axes."""
@@ -68,7 +69,6 @@ class LatticeCanvas(FigureCanvas):
         handles = [Patch(color=color, label=label) for label, color in l.items()]
         self.ax.legend(handles=handles, title='Atoms', loc='upper right')
         self.draw()
-    
 
 # --------------------------
 # -- Widgets
@@ -175,6 +175,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Crystal Lattice GUI")
+        self.data_path = 'CustomData.dat'
         # self.resize(1150, 780)
 
         # Store unit mode (internal is always mm)
@@ -189,42 +190,49 @@ class MainWindow(QtWidgets.QMainWindow):
         controls = QtWidgets.QVBoxLayout()
         layout.addLayout(controls, stretch=0)
 
-        # -- Beginner/Advanced toggle
-        self.mode_checkbox = QtWidgets.QCheckBox("Advanced mode")
-        self.mode_checkbox.stateChanged.connect(self._on_mode_change)
-        self.mode_checkbox.setVisible(False)
-        controls.addWidget(self.mode_checkbox)
+        
+        # -- File input
+        in_widget = QtWidgets.QWidget()
+        in_layout = QtWidgets.QHBoxLayout(in_widget)
+        self.infile_edit = QtWidgets.QLineEdit()
+        in_btn = QtWidgets.QPushButton("Browse")
+        in_btn.clicked.connect(self._browse_infile)
+        in_layout.addWidget(QtWidgets.QLabel("Input file:"))
+        in_layout.addWidget(self.infile_edit)
+        in_layout.addWidget(in_btn)
+        controls.addWidget(in_widget)
 
-        # -- Units toggle
-        self.unit_widget = QtWidgets.QWidget()  # container so we can hide/show as one block
-        unit_layout = QtWidgets.QHBoxLayout(self.unit_widget)
-        unit_layout.addWidget(QtWidgets.QLabel("Units:"))
-        self.mm_radio = QtWidgets.QRadioButton("mm")
-        self.in_radio = QtWidgets.QRadioButton("inches")
-        self.mm_radio.setChecked(True)
-        unit_layout.addWidget(self.mm_radio)
-        unit_layout.addWidget(self.in_radio)
-        controls.addWidget(self.unit_widget)
-        self.unit_widget.hide()  # hidden at startup
+        # -- File output
+        self.out_widget = QtWidgets.QWidget()
+        self.out_layout = QtWidgets.QHBoxLayout(self.out_widget)
+        self.outfile_edit = QtWidgets.QLineEdit()
+        self.out_btn = QtWidgets.QPushButton("Browse")
+        self.out_btn.clicked.connect(self._browse_outfile)
+        self.out_layout.addWidget(QtWidgets.QLabel("Output path:"))
+        self.out_layout.addWidget(self.outfile_edit)
+        self.out_layout.addWidget(self.out_btn)
+        controls.addWidget(self.out_widget)
+        self.out_widget.hide()
+
 
         # -- parameters
         # Format: name: (min, max, step, default, pregenerate, advanced_only)
         self.param_defs = { #note, they are displayed in this order
-            "nx": (1, 10.0, 1, 1.0, True, False),
-            "ny": (1, 10.0, 1, 1.0, True, False),
-            "nz": (1, 10.0, 1, 1.0, True, False),
+            "nx": (1, 10.0, 1, 1.0, False, False),
+            "ny": (1, 10.0, 1, 1.0, False, False),
+            "nz": (1, 10.0, 1, 1.0, False, False),
             "Curve Resolution": (3, 500, 1, 50, False, False),
             "Buildplate Length": (10, 1000, 10, 210, False, False),
             "Buildplate Width": (10, 1000, 10, 250, False, False),
-            "Radius": (0.1, 10.0, 0.1, 15.0, False, False),
+            "Radius": (0.1, 30.0, 0.1, 15.0, False, False),
             "Nucleus Scale": (.01, 1.0, .01, 1.0, False, False),
             "Bond Range": (0.0, 1, 0.01, 0.1, False, True),
             "Tolerance": (0.0, 1.0, 0.01, 0.1, False, True),
-            "Cut Depth Ratio": (0.0, 1.0, 0.01, 0.25, False, True),
-            "Cut Radius Ratio": (0.0, 1.0, 0.01, 0.16, False, True),
-            "Trapezoid Side Ratio": (0.0, 1.0, 0.01, 0.33, False, True),
-            "Trapezoid Depth Ratio": (0.0, 1.0, 0.01, 0.2, False, True),
-            "Trapezoid Oblong Ratio": (0.0, 1.0, 0.01, 0.9, False, True),
+            "Cut Depth Ratio": (0.01, 1.0, 0.01, 0.25, False, True),
+            "Cut Radius Ratio": (0.01, 1.0, 0.01, 0.16, False, True),
+            "Trapezoid Side Ratio": (0.01, 1.0, 0.01, 0.33, False, True),
+            "Trapezoid Depth Ratio": (0.01, 1.0, 0.01, 0.2, False, True),
+            "Trapezoid Oblong Ratio": (0.01, 1.0, 0.01, 0.9, False, True),
             "Overhang Angle": (0.0, 90.0, 0.5, 45.0, False, True)
         }
 
@@ -259,34 +267,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.generated = False #needed for apply slider layout
         self._apply_slider_layout(advanced=False)
 
-        # -- File input
-        in_widget = QtWidgets.QWidget()
-        in_layout = QtWidgets.QHBoxLayout(in_widget)
-        self.infile_edit = QtWidgets.QLineEdit()
-        in_btn = QtWidgets.QPushButton("Browse")
-        in_btn.clicked.connect(self._browse_infile)
-        in_layout.addWidget(QtWidgets.QLabel("Input file:"))
-        in_layout.addWidget(self.infile_edit)
-        in_layout.addWidget(in_btn)
-        controls.addWidget(in_widget)
-
-        # -- File output
-        self.out_widget = QtWidgets.QWidget()
-        self.out_layout = QtWidgets.QHBoxLayout(self.out_widget)
-        self.outfile_edit = QtWidgets.QLineEdit()
-        self.out_btn = QtWidgets.QPushButton("Browse")
-        self.out_btn.clicked.connect(self._browse_outfile)
-        self.out_layout.addWidget(QtWidgets.QLabel("Output path:"))
-        self.out_layout.addWidget(self.outfile_edit)
-        self.out_layout.addWidget(self.out_btn)
-        controls.addWidget(self.out_widget)
-        self.out_widget.hide()
 
         # -- Bonds checkbox
         self.bonds_checkbox = QtWidgets.QCheckBox("Show bonds")
         self.bonds_checkbox.setVisible(False)
         self.bonds_checkbox.stateChanged.connect(self._toggle_bonds)
         controls.addWidget(self.bonds_checkbox)
+
+        # -- Beginner/Advanced toggle
+        self.mode_checkbox = QtWidgets.QCheckBox("Advanced mode")
+        self.mode_checkbox.stateChanged.connect(self._on_mode_change)
+        self.mode_checkbox.setVisible(False)
+        controls.addWidget(self.mode_checkbox)
+
+        # -- Separate Unique atoms and bonds toggle
+        self.separate_checkbox = QtWidgets.QCheckBox("Separate atoms types and bonds")
+        self.separate_checkbox.stateChanged.connect(self._separate_atoms)
+        self.separate_checkbox.setVisible(False)
+        controls.addWidget(self.separate_checkbox)
+
+        # -- Units toggle
+        self.unit_widget = QtWidgets.QWidget()  # container so we can hide/show as one block
+        unit_layout = QtWidgets.QHBoxLayout(self.unit_widget)
+        unit_layout.addWidget(QtWidgets.QLabel("Units:"))
+        self.mm_radio = QtWidgets.QRadioButton("mm")
+        self.in_radio = QtWidgets.QRadioButton("inches")
+        self.mm_radio.setChecked(True)
+        unit_layout.addWidget(self.mm_radio)
+        unit_layout.addWidget(self.in_radio)
+        controls.addWidget(self.unit_widget)
+        self.unit_widget.hide()  # hidden at startup
 
         # -- Action buttons
         btns = QtWidgets.QHBoxLayout()
@@ -307,7 +317,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
         # add version label
-        controls.addWidget(QtWidgets.QLabel("Version 1.0"))
+        controls.addWidget(QtWidgets.QLabel("Version 1.1"))
         controls.addStretch()
 
         # Right panel: lattice viewer
@@ -352,6 +362,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """Show/hide advanced parameters depending on toggle state."""
         self._apply_slider_layout(self.mode_checkbox.isChecked())
 
+    def _separate_atoms(self):
+        """Show/hide advanced parameters depending on toggle state."""
+        # self._apply_slider_layout(self.separate_checkbox.isChecked())
+        pass
+
     def _on_unit_change(self):
         """Switch displayed slider values between mm and inches."""
         self.unit_is_inches = self.in_radio.isChecked()
@@ -378,6 +393,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.gen_btn.setText("Regenerate")
                 self.exp_btn.setEnabled(True)
                 self.mode_checkbox.setVisible(True)
+                self.separate_checkbox.setVisible(True)
                 self.unit_widget.show()
                 self.out_widget.show()
                 self.bonds_checkbox.setVisible(True)
@@ -390,17 +406,18 @@ class MainWindow(QtWidgets.QMainWindow):
             params = self._collect_params()
             nx,ny,nz = params['nx'],params['ny'],params['nz']
             self.lattice = Lattice(infile,nx,ny,nz,bond_range=params['Bond Range']) #parce cif file and create a lattice object with all spacial and atomic data (see genfuncs.py)
-            self.log_message(f"Lattice generated. {len(self.lattice.atoms)} atoms. {len(self.lattice.bonds)} bonds.",False)
+            self.log_message(f"{self.lattice.lattice_name} lattice generated. {len(self.lattice.atoms)} atoms. {len(self.lattice.bonds)} bonds.",False)
             if not self.lattice.all_nodes_connected():
                 self.log_message("Warning: Not all atoms are connected. Consider increasing bond range.",True)
             self.canvas.plot_latt(self.lattice, nuc_scale=params["Nucleus Scale"], show_bonds=self.bonds_checkbox.isChecked())
 
     def _on_export(self):
         """Handler for Export button."""
+        openscad_path = self._find_OpenSCAD()
         params = self._collect_params()
         outfile = self.outfile_edit.text().strip()
         if not outfile:
-            self.log_message("No output file selected", error=True)
+            self.log_message("No output path selected", error=True)
             return
         cut_planes = []
         for atom in self.lattice.atoms:
@@ -418,7 +435,7 @@ class MainWindow(QtWidgets.QMainWindow):
             params["Trapezoid Oblong Ratio"],#ratio of height of short trap leg to long trap leg
             params["Overhang Angle"]#degrees, internal pryamid that prevents supports in female hemisphere. Should be >45 and <90
         ]
-        HemisphereMaker.makeSTL(outfile,self.lattice.atoms,cut_planes,plate_dim=(params['Buildplate Length'],params['Buildplate Width']),parameters=ps,log=self)
+        HemisphereMaker.makeSTL(outfile,self.lattice.atoms,cut_planes,plate_dim=(params['Buildplate Length'],params['Buildplate Width']),parameters=ps,log=self, sep = self.separate_checkbox.isChecked(),openscad_cmd = openscad_path)
 
     def _toggle_bonds(self, state):
         """Toggle bond drawing in the 3D lattice."""
@@ -474,6 +491,70 @@ class MainWindow(QtWidgets.QMainWindow):
         c = -0.125#roughly fitted parameters
         return atom_num*(a*np.exp(b*res)+c)
 
+    def _find_OpenSCAD(self): 
+        #this file is meant to allow for recursive calling in order to ensure the correct OpenScad.exe is found
+        
+        openscad_path = self._get_datafile_path(self.data_path) #get path from custom data file
+
+        try:
+            result = subprocess.run(
+                [openscad_path, "--version"],  # just checking to make sure OpenSCAD exists
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            print(result.stderr.strip())
+            return openscad_path
+        except FileNotFoundError:
+            #run popup to find OpenSCAD
+            QtWidgets.QMessageBox.information(
+                self, "OpenSCAD Not Found", f"Naviagate to OpenSCAD location in subsequent popup."
+            )
+            openscad_path2, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Select OpenSCAD.exe file",
+                "",
+                "EXE files (*.exe);;All files (*)"
+            )
+
+            if not openscad_path2: #if close prompt without giving path
+                return self._find_OpenSCAD()
+            
+
+            # Add OpenSCAD file to data file
+            with open(self.data_path, "r") as f:
+                lines = f.readlines()
+            lines[0] = lines[0].strip().split()[0] + ' ' + openscad_path2 + '\n'
+
+            # Write back
+            with open(self.data_path, "w") as f:
+                f.writelines(lines)
+
+            # Show success message
+            QtWidgets.QMessageBox.information(
+                self, "Success", f"OpenSCAD location saved successfully"
+            )
+            return self._find_OpenSCAD()#repeat to ensure the located file is correct
+
+    def _get_datafile_path(self,data_path):
+        with open(data_path, "r") as f:
+            lines = f.readlines()
+        line = lines[0]
+        if len(line)>14:
+            return line[14:].strip()
+        else:
+            print(f'Failed to read data file line:{lines[0]}')
+            return
+        
+    def _register_render_time(self,res,t):
+        # Add OpenSCAD file to data file
+        with open(self.data_path, "r") as f:
+            lines = f.readlines()
+        lines.append(f'{res},{t},{len(self.lattice.atoms)},{len(self.lattice.bonds)}\n')
+
+        # Write back
+        with open(self.data_path, "w") as f:
+            f.writelines(lines)
 
 # --------------------------
 # -- Run
@@ -485,7 +566,7 @@ sys.exit(app.exec_())
 
 
 # command to make debugging
-# python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "C:\Users\blake\Downloads\Logo1.png" -d all --console
+# python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "C:\Users\blake\Downloads\LogoICO.ico" -d all --console
 
 # command to make reg version
-# python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "C:\Users\blake\Downloads\Logo1.png"
+# python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "C:\Users\blake\Downloads\LogoICO.ico"
