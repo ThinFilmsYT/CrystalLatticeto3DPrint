@@ -51,7 +51,7 @@ After the OpenSCAD files have been generated, OpenSCAD is used to convert each f
 While exporting, the program will appear frozen and will not update until exporting is completed. The log will periodically update as checkpoints are reached.
 
 ### Advanced Mode
-Advanced mode displays many extra adjustable parameters for those with more unsatified with the defaults. Although, the defaults are designed to be well-suited for most cases.\
+Advanced mode displays many extra adjustable parameters for those with more unsatified with the defaults. Although, the defaults are designed to be well-suited for most cases.
 
 Bond Range: This is a scaling factor that adjusts which atoms are connected by a bond. In the program, bonds are found by first finding the distance to all the other atoms in the lattice. A bond is always created to the nearest neighbor to each atom. Then, any other atoms within a radius of d_nn * (1 + Bond Range) will also be included in the bonds. This can be useful for complex lattices where one could want to display different bond lengths between several atoms.
 
