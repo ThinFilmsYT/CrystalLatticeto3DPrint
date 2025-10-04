@@ -12,7 +12,7 @@ import math
 # === Configuration ===
 # Set this to the OpenSCAD command or full path to the executable on your system.
 # If 'openscad' is in your PATH, no change is needed. Otherwise, use the full path:
-openscad_cmd = "C:/Program Files/OpenSCAD/openscad.exe"
+
 
 # Ensure solidpython is installed
 try:
@@ -147,16 +147,16 @@ def reorient_angles(normal_v, angles):
     list_flipped = []
     for pol, az in list_ge:#flip hemisphere upright for better 3d printing
         if az>=np.pi:
-            list_flipped.append((np.pi-pol,az-np.pi))
+            list_flipped.append((np.pi-pol,az))
         else:
-            list_flipped.append((np.pi-pol,az+np.pi))
+            list_flipped.append((np.pi-pol,az))
 
     return list_lt, list_flipped
 
-def bond_cylinder(bond_x, bond_y, bond_z,bond_length, cut_radius, tolerance,ID_ratio = 0.8):
+def bond_cylinder(bond_x, bond_y, bond_z,bond_length, cut_radius, tolerance,ID_ratio = 0.7):
     return translate([bond_x, bond_y, bond_z])(cylinder(h=bond_length, r=cut_radius-tolerance/2, center=True) - cylinder(h=bond_length, r=cut_radius*ID_ratio, center=True))
 
-def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log = None):
+def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log = None, sep = False, openscad_cmd = "C:/Program Files/OpenSCAD/openscad.exe"):
     failed = True
     
     if len(parameters) == 10:
@@ -211,137 +211,21 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
             log.log_message('Error: Cut depth way too big', error=True)
         return
 
-
-        ''' #first pass, bad layout
-        #find how many atoms fit on build plate
-        max_bonds = 0 #max number of bonds for a single atom
-        max_radius = 0 # in units of Anstroms
-        for atom in atoms:
-            if len(atom.bonds)>max_bonds:
-                max_bonds = len(atom.bonds)
-            if atom.radius > max_radius:
-                max_radius = atom.radius
-        width = (max_bonds+1)//2 * 5 * cut_radius + 5 * radius #floor((max_bonds+1)/2) to get max bonds on either side of hemispheres
-        row_max = plate_dim[0]//width
-        col_max = plate_dim[1]//(radius*2.5)
-        
-        if (atoms_per_plate:=row_max*col_max)>0:
-            plate_total = math.ceil(len(atoms)/atoms_per_plate)
+    time_total = 0
+    if log:
+        t = log._render_time_estimate()
+        if math.ceil(t)>3:
+            log.log_message(f'Warning. Long rendering time, roughly {math.ceil(t)} minutes', error=True)
+        elif t>1:
+            log.log_message(f'Rendering time, roughly {math.ceil(t)} minutes', error=False)
         else:
-            print(f'Error: plate too small for radius = {radius},{width}')
-
-        print(f'Writing {plate_total} .stl files.')
-        atom_idx = 0 # counter must keep counting regardless of plate number
-        for p in range(plate_total): #allow for multiple plates adn thus multiple stls
-            p_models = [] #stores all the models for a single plate
-            while atom_idx<atoms_per_plate*(p+1) and atom_idx < len(atoms):
-                atom = atoms[atom_idx] #get atom
-                atom_x = (atom_idx//col_max) * width #these are the x,y coords of the center between the hemispheres
-                atom_y = (atom_idx%col_max) * radius*2.5
-
-                #get cut angles
-                cut_angles1,cut_angles2 = reorient_angles(cut_planes[atom_idx],atom.bonds)
-                atom_print_r = atom.radius/max_radius*radius*nucleus_scale #convert atom radius in anstroms into units of radius (mm)
-                cuts1 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles1]
-                cuts2 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles2]
-
-                trap_side = atom_print_r * trap_side_ratio
-                trap_depth = atom_print_r * trap_depth_ratio
-
-                #make female hemispher
-                model1 = translate([radius*1.25 + atom_x, atom_y, -trap_depth])(difference()(hemisphere(radius*atom.radius/max_radius*nucleus_scale), *cuts1) - trapozoidal_prism(trap_side,trap_oblong_ratio,trap_depth) - make_trap_pyramid(trap_side,trap_depth, trap_oblong_ratio, overhang_angle)) #female
-                #make male hemisphere
-                model2 = translate([-radius*1.25 + atom_x, atom_y, 0])(difference()(hemisphere(radius*atom.radius/max_radius*nucleus_scale), *cuts2) + translate([0, 0, -trap_depth])(trapozoidal_prism(trap_side-tolerance/2,trap_oblong_ratio,trap_depth-tolerance))) #male
-                
-                # make bond models
-                bond_models = []
-                for j, bond in enumerate(atom.bonds):
-                    bond_length = (bond[0] - (atom.bond_atom_sizes[j][0] + atom.bond_atom_sizes[j][1])*nucleus_scale)*atom_print_r/max_radius + 2*cut_depth
-                    if j == 0: #first bond at x = 0
-                        bond_x = atom_x
-                    elif j%2 == 1: #for odd, put on right side
-                        bond_x = 2.5*cut_radius*(j-1)/2 + 2.5 * radius + atom_x
-                    else:# for even put on left
-                        bond_x = -radius*2.5 - 2.5*cut_radius*(j-2)/2 + atom_x
-                    bond_z = bond_length/2-trap_depth
-                    bond_models.append(bond_cylinder(bond_x,atom_y,bond_z,bond_length,cut_radius,tolerance))
-
-                #finalize models
-                model3 = union()(*bond_models)
-                p_models.append(model1 + model2 + model3)
-                #next atom
-                atom_idx+=1
-
-            #combone all models on buildplate and make STL
-            model = union()(*p_models)
-            os.makedirs(STL_path, exist_ok=True)
-            scad_file = os.path.join(STL_path, f"hemispheres{p+1}.scad")
-            stl_file = os.path.join(STL_path, f"hemispheres{p+1}.stl")
-            scad_render_to_file(model, scad_file, file_header="$fn=50;")
-
-            print(f"Wrote SCAD: {scad_file}")
-            # Export STL using OpenSCAD
-            subprocess.run([openscad_cmd, "-o", stl_file, scad_file], check=True)
-            print(f"Exported STL: {stl_file}")'''
-    #layout algorithm. not perfect, but fairly space effective if the nuclear radii are similar
-    #for big prints, this will break up the print into different stl files if 3D printer build plate fills
-    # will also make info txt files that describes each set of atom. each atom build plate will get a txt describing each atom
-    # bonds will also make a txt describing the layout, but this index starts at the first build plate that contains bonds   
+            log.log_message(f'Rendering time, less than a minute', error=False)
+        
     max_radius = 0 # in units of Anstroms
     for atom in atoms:
         if atom.radius > max_radius:
             max_radius = atom.radius
 
-    row_max = plate_dim[0]//(radius*5)
-    col_max = plate_dim[1]//(radius*2.5)
-    if (atoms_per_plate:=row_max*col_max)>0:
-        plate_total = math.ceil(len(atoms)/atoms_per_plate)
-    else:
-        print(f'Error: plate too small for radius = {radius}')
-        if log:
-            log.log_message(f'Error: plate too small for radius = {radius}', error=True)
-        return
-        
-
-    
-    
-    #phase one: add only hemisphere pairs to the buildplate
-    atom_idx = 0 # counter must keep counting regardless of plate number
-    plates = []
-    for p in range(plate_total): #allow for multiple plates adn thus multiple stls
-        output_info = open(os.path.join(STL_path,f"AtomInfo{p+1}.txt"), "w")       
-        output_info.write("Atom Index,\tAtom,\tx,\ty,\tz,\tBond Count,\tColumn\n")
-        plates.append([]) #stores all the models for a single plate
-        while atom_idx<atoms_per_plate*(p+1) and atom_idx < len(atoms):
-            atom = atoms[atom_idx] #get atom
-            output_info.write(f"{atom_idx+1},\t{atom.element}{atom.charge},\t{atom.x},\t{atom.y},\t{atom.z},\t{len(atom.bonds)},\t{(atom_idx//col_max)+1}\n")
-            atom_x = ((atom_idx%atoms_per_plate)//col_max) * radius*5 + 2.5*radius#these are the x,y coords of the center between the hemispheres
-            atom_y = ((atom_idx%atoms_per_plate)%col_max) * radius*2.5 + 1.25 * radius
-
-            #get cut angles
-            cut_angles1,cut_angles2 = reorient_angles(cut_planes[atom_idx],atom.bonds)
-            atom_print_r = atom.radius/max_radius*radius*nucleus_scale #convert atom radius in anstroms into units of radius (mm)
-            cuts1 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles1]
-            cuts2 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles2]
-
-            trap_side = atom_print_r * trap_side_ratio
-            trap_depth = atom_print_r * trap_depth_ratio
-
-            #make female hemispher
-            model1 = translate([radius*1.25 + atom_x, -atom_y, -trap_depth])(difference()(hemisphere(atom_print_r), *cuts1) - trapozoidal_prism(trap_side,trap_oblong_ratio,trap_depth) - make_trap_pyramid(trap_side,trap_depth, trap_oblong_ratio, overhang_angle)) #female
-            #make male hemisphere
-            model2 = translate([-radius*1.25 + atom_x, -atom_y, 0])(difference()(hemisphere(atom_print_r), *cuts2) + translate([0, 0, -trap_depth])(trapozoidal_prism(trap_side-tolerance/2,trap_oblong_ratio,trap_depth-tolerance))) #male
-            
-
-            #add hemisphere models
-            plates[p].append(model1 + model2)
-            #next atom
-            atom_idx+=1
-        output_info.close()
-        
-            
-
-    #phase 2: add bond models
     bond_idx = 0
     bond_data = []
     for atom in atoms:#collect bond info
@@ -362,69 +246,200 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
                 bond_idx +=1
     bond_idx = 0
 
-    #first complete column of bonds with
-    atoms_on_unfinished_plate = len(atoms)%atoms_per_plate
-    remaining_length = plate_dim[1] - radius*2.5*(atoms_on_unfinished_plate%col_max)
-    rem_cols = remaining_length // (cut_radius*2.5)
-    rem_rows = radius *5 // (cut_radius*2.5)
-    rem_bonds = rem_cols*rem_rows
-    new_x_O = (atoms_on_unfinished_plate//col_max) * radius*5
-    new_y_O = (atoms_on_unfinished_plate%col_max) * radius*2.5
     
-    while bond_idx<min(len(bond_data),rem_bonds):
-        if bond_idx == 0: #Start new bond info file. There will be one file per plate, and all these bonds are nessicaroly on the same plate
-            output_info = open(os.path.join(STL_path,f"BondInfo1.txt"), "w")
-            output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
-        bond_x = (bond_idx//rem_cols) * cut_radius*2 + 1.25*cut_radius + new_x_O#these are the x,y coords of the center between the hemispheres
-        bond_y = (bond_idx%rem_cols) * cut_radius*2.5 + 1.25 * cut_radius + new_y_O#note, the "new origin" is moved to the location of the len(atoms) + 1th location
-        bond_z = bond_data[bond_idx][6]/2-trap_depth
-        plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
-        output_info.write(f"{bond_data[bond_idx][0]},\t{bond_data[bond_idx][1]},\t{bond_data[bond_idx][2]},\t{bond_data[bond_idx][3]},\t{bond_data[bond_idx][4]},\t{bond_data[bond_idx][5]},\t{bond_data[bond_idx][6]},\t{bond_idx//rem_cols+1}\n")
-        bond_idx += 1
+    
+    if sep: # separate build plate for each type of atom, and separate build plate for the bonds
+        atom_kinds = []
+        atom_lists = []
+        for atom in atoms:
+            if atom.element in atom_kinds:
+                atom_lists[atom_kinds.index(atom.element)].append(atom)
+            else:
+                atom_kinds.append(atom.element)
+                atom_lists.append([atom])
+        plates = []
+        atom_plates = 0
+        for atom_list in atom_lists:
+            print(atom_list)
+            atom_idx = 0 # counter must keep counting regardless of plate number
+            atom_print_r = atom_list[0].radius/max_radius*radius*nucleus_scale
+            row_max = plate_dim[0]//(atom_print_r*5)
+            col_max = plate_dim[1]//(atom_print_r*2.5)
+            if (atoms_per_plate:=row_max*col_max)>0:
+                plate_total = math.ceil(len(atoms)/atoms_per_plate)
+            else:
+                print(f'Error: plate too small for radius = {radius}')
+                if log:
+                    log.log_message(f'Error: plate too small for radius = {radius}', error=True)
+                return
+            for p in range(plate_total): #allow for multiple plates adn thus multiple stls
+                output_info = open(os.path.join(STL_path,f"AtomInfo{p+1}.txt"), "w")       
+                output_info.write("Atom Index,\tAtom,\tx,\ty,\tz,\tBond Count,\tColumn\n")
+                plates.append([]) #stores all the models for a single plate
+                atom_plates += 1
+                while atom_idx<atoms_per_plate*(p+1) and atom_idx < len(atom_list):
+                    atom = atom_list[atom_idx] #get atom
+                    output_info.write(f"{atom_idx+1},\t{atom.element}{atom.charge},\t{atom.x},\t{atom.y},\t{atom.z},\t{len(atom.bonds)},\t{(atom_idx//col_max)+1}\n")
+                    atom_x = ((atom_idx%atoms_per_plate)//col_max) * atom_print_r*5 + 2.5*atom_print_r#these are the x,y coords of the center between the hemispheres
+                    atom_y = ((atom_idx%atoms_per_plate)%col_max) * atom_print_r*2.5 + 1.25 * atom_print_r
 
+                    #get cut angles
+                    cut_angles1,cut_angles2 = reorient_angles(cut_planes[atom_idx],atom.bonds)
+                    cuts1 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles1]
+                    cuts2 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles2]
 
-        # now full length columns for the remaining bonds on the same plate
-    remaining_width = plate_dim[0] - radius*5*(atoms_on_unfinished_plate//col_max)
-    fin_rows = remaining_width // (cut_radius*2.5)
-    fin_cols = radius *5 // (cut_radius*2.5)
-    fin_bonds = fin_cols*fin_rows
+                    trap_side = atom_print_r * trap_side_ratio
+                    trap_depth = atom_print_r * trap_depth_ratio
 
-    new_x_O2 = (atoms_on_unfinished_plate//col_max+1) * radius*5
-    while bond_idx-rem_bonds<min(len(bond_data)-rem_bonds,fin_bonds): # autoskips if bonds are already made
-        if bond_idx == 0: #Start new bond info file. There will be one file per plate
-            output_info = open(os.path.join(STL_path,f"BondInfo1.txt"), "w")
-            output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
-        bond_x = (bond_idx//fin_cols) * cut_radius*2 + 1.25*cut_radius + new_x_O2#these are the x,y coords of the center between the hemispheres
-        bond_y = (bond_idx%fin_cols) * cut_radius*2.5 + 1.25 * cut_radius
-        bond_z = bond_data[bond_idx][6]/2-trap_depth
-        plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
-        output_info.write(f"{bond_data[bond_idx][0]},\t{bond_data[bond_idx][1]},\t{bond_data[bond_idx][2]},\t{bond_data[bond_idx][3]},\t{bond_data[bond_idx][4]},\t{round(bond_data[bond_idx][5],4)},\t{round(bond_data[bond_idx][6],4)},\t{bond_idx//rem_cols+1}\n")
-        bond_idx += 1
+                    #make female hemispher
+                    model1 = translate([atom_print_r*1.25 + atom_x, -atom_y, 0])(difference()(hemisphere(atom_print_r), *cuts1) - trapozoidal_prism(trap_side,trap_oblong_ratio,trap_depth) - make_trap_pyramid(trap_side,trap_depth, trap_oblong_ratio, overhang_angle)) #female
+                    #make male hemisphere
+                    model2 = translate([-atom_print_r*1.25 + atom_x, -atom_y, trap_depth-tolerance])(difference()(hemisphere(atom_print_r), *cuts2) + translate([0, 0, -(trap_depth-tolerance)])(trapozoidal_prism(trap_side-tolerance/2,trap_oblong_ratio,trap_depth-tolerance))) #male
+                    
 
-
-    # now start new plate(s) is that is required
-    bond_row_max = plate_dim[0]//(cut_radius*2.5)
-    bond_col_max = plate_dim[1]//(cut_radius*2.5)
-    bonds_per_plate = bond_row_max*bond_col_max
-    bond_plate_total = math.ceil((len(bond_data)-bond_idx)/bonds_per_plate) #number of extra plates for just bonds
-    if bond_idx == 0:#handle if no bond files have been created
+                    #add hemisphere models
+                    plates[-1].append(model1 + model2)
+                    #next atom
+                    atom_idx+=1
+                output_info.close()
+        
+        # now start new plate(s) is that is required
+        bond_row_max = plate_dim[0]//(cut_radius*2.5)
+        bond_col_max = plate_dim[1]//(cut_radius*2.5)
+        bonds_per_plate = bond_row_max*bond_col_max
+        bond_plate_total = math.ceil(len(bond_data)/bonds_per_plate) #number of extra plates for just bonds
         filenum = 0
+        bond_idx = 0
+        for p in range(bond_plate_total):
+            plates.append([])
+            output_info = open(os.path.join(STL_path,f"BondInfo{filenum + atom_plates + 1}.txt"), "w")
+            output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
+            while bond_idx<min(len(bond_data),bonds_per_plate):
+                bond_x = (bond_idx//bond_col_max) * cut_radius*2 + 1.25*cut_radius #these are the x,y coords of the center between the hemispheres
+                bond_y = (bond_idx%bond_col_max) * cut_radius*2.5 + 1.25 * cut_radius
+                bond_z = bond_data[bond_idx][6]/2
+                plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
+                output_info.write(f"{bond_data[bond_idx][0]},\t{bond_data[bond_idx][1]},\t{bond_data[bond_idx][2]},\t{bond_data[bond_idx][3]},\t{bond_data[bond_idx][4]},\t{bond_data[bond_idx][5]},\t{bond_data[bond_idx][6]},\t{bond_idx//bond_col_max+1}\n")
+                bond_idx += 1   
+            output_info.close()
+
+
     else:
-        filenum = 1
-        output_info.close()#close the previous bond file if it exists
-    for p in range(bond_plate_total):
-        plates.append([])
-        output_info = open(os.path.join(STL_path,f"BondInfo{filenum + p + 1}.txt"), "w")
-        output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
-        while bond_idx-rem_bonds-fin_bonds<min(len(bond_data)-rem_bonds-fin_bonds,bonds_per_plate):
-            bond_x = (bond_idx//bond_col_max) * cut_radius*2 + 1.25*cut_radius #these are the x,y coords of the center between the hemispheres
-            bond_y = (bond_idx%bond_col_max) * cut_radius*2.5 + 1.25 * cut_radius
-            bond_z = bond_data[bond_idx][6]/2-trap_depth
+        #layout algorithm. not perfect, but fairly space effective if the nuclear radii are similar
+        #for big prints, this will break up the print into different stl files if 3D printer build plate fills
+        # will also make info txt files that describes each set of atom. each atom build plate will get a txt describing each atom
+        # bonds will also make a txt describing the layout, but this index starts at the first build plate that contains bonds   
+        row_max = plate_dim[0]//(radius*nucleus_scale*5)
+        col_max = plate_dim[1]//(radius*nucleus_scale*2.5)
+        if (atoms_per_plate:=row_max*col_max)>0:
+            plate_total = math.ceil(len(atoms)/atoms_per_plate)
+        else:
+            print(f'Error: plate too small for radius = {radius}')
+            if log:
+                log.log_message(f'Error: plate too small for radius = {radius}', error=True)
+            return
+        
+        #phase one: add only hemisphere pairs to the buildplate
+        atom_idx = 0 # counter must keep counting regardless of plate number
+        plates = []
+        for p in range(plate_total): #allow for multiple plates adn thus multiple stls
+            output_info = open(os.path.join(STL_path,f"AtomInfo{p+1}.txt"), "w")       
+            output_info.write("Atom Index,\tAtom,\tx,\ty,\tz,\tBond Count,\tColumn\n")
+            plates.append([]) #stores all the models for a single plate
+            while atom_idx<atoms_per_plate*(p+1) and atom_idx < len(atoms):
+                atom = atoms[atom_idx] #get atom
+                output_info.write(f"{atom_idx+1},\t{atom.element}{atom.charge},\t{atom.x},\t{atom.y},\t{atom.z},\t{len(atom.bonds)},\t{(atom_idx//col_max)+1}\n")
+                atom_x = ((atom_idx%atoms_per_plate)//col_max) * radius*nucleus_scale*5 + 2.5*radius*nucleus_scale#these are the x,y coords of the center between the hemispheres
+                atom_y = ((atom_idx%atoms_per_plate)%col_max) * radius*nucleus_scale*2.5 + 1.25 * radius*nucleus_scale
+
+                #get cut angles
+                cut_angles1,cut_angles2 = reorient_angles(cut_planes[atom_idx],atom.bonds)
+                atom_print_r = atom.radius/max_radius*radius*nucleus_scale #convert atom radius in anstroms into units of radius (mm)
+                cuts1 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles1]
+                cuts2 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles2]
+
+                trap_side = atom_print_r * trap_side_ratio
+                trap_depth = atom_print_r * trap_depth_ratio
+
+                #make female hemispher
+                model1 = translate([radius*nucleus_scale*1.25 + atom_x, -atom_y, 0])(difference()(hemisphere(atom_print_r), *cuts1) - trapozoidal_prism(trap_side,trap_oblong_ratio,trap_depth) - make_trap_pyramid(trap_side,trap_depth, trap_oblong_ratio, overhang_angle)) #female
+                #make male hemisphere
+                model2 = translate([-radius*nucleus_scale*1.25 + atom_x, -atom_y, trap_depth-tolerance])(difference()(hemisphere(atom_print_r), *cuts2) + translate([0, 0, -(trap_depth-tolerance)])(trapozoidal_prism(trap_side-tolerance/2,trap_oblong_ratio,trap_depth-tolerance))) #male
+                
+
+                #add hemisphere models
+                plates[p].append(model1 + model2)
+                #next atom
+                atom_idx+=1
+            output_info.close()
+            
+                
+
+        #phase 2: add bond models
+
+        #first complete column of bonds with
+        atoms_on_unfinished_plate = len(atoms)%atoms_per_plate
+        remaining_length = plate_dim[1] - radius*nucleus_scale*2.5*(atoms_on_unfinished_plate%col_max)
+        rem_cols = remaining_length // (cut_radius*2.5)
+        rem_rows = radius*nucleus_scale *5 // (cut_radius*2.5)
+        rem_bonds = rem_cols*rem_rows
+        new_x_O = (atoms_on_unfinished_plate//col_max) * radius*nucleus_scale*5
+        new_y_O = (atoms_on_unfinished_plate%col_max) * radius*nucleus_scale*2.5
+        
+        while bond_idx<min(len(bond_data),rem_bonds):
+            if bond_idx == 0: #Start new bond info file. There will be one file per plate, and all these bonds are nessicaroly on the same plate
+                output_info = open(os.path.join(STL_path,f"BondInfo1.txt"), "w")
+                output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
+            bond_x = (bond_idx//rem_cols) * cut_radius*2 + 1.25*cut_radius + new_x_O#these are the x,y coords of the center between the hemispheres
+            bond_y = (bond_idx%rem_cols) * cut_radius*2.5 + 1.25 * cut_radius + new_y_O#note, the "new origin" is moved to the location of the len(atoms) + 1th location
+            bond_z = bond_data[bond_idx][6]/2
             plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
             output_info.write(f"{bond_data[bond_idx][0]},\t{bond_data[bond_idx][1]},\t{bond_data[bond_idx][2]},\t{bond_data[bond_idx][3]},\t{bond_data[bond_idx][4]},\t{bond_data[bond_idx][5]},\t{bond_data[bond_idx][6]},\t{bond_idx//rem_cols+1}\n")
-            bond_idx += 1   
-        output_info.close()
-    #phase 3: combone all models on buildplate and make STL
+            bond_idx += 1
+
+
+            # now full length columns for the remaining bonds on the same plate
+        remaining_width = plate_dim[0] - radius*nucleus_scale*5*(atoms_on_unfinished_plate//col_max)
+        fin_rows = remaining_width // (cut_radius*2.5)
+        fin_cols = radius *5 // (cut_radius*2.5)
+        fin_bonds = fin_cols*fin_rows
+
+        new_x_O2 = (atoms_on_unfinished_plate//col_max+1) * radius*nucleus_scale*5
+        while bond_idx-rem_bonds<min(len(bond_data)-rem_bonds,fin_bonds): # autoskips if bonds are already made
+            if bond_idx == 0: #Start new bond info file. There will be one file per plate
+                output_info = open(os.path.join(STL_path,f"BondInfo1.txt"), "w")
+                output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
+            bond_x = (bond_idx//fin_cols) * cut_radius*2 + 1.25*cut_radius + new_x_O2#these are the x,y coords of the center between the hemispheres
+            bond_y = (bond_idx%fin_cols) * cut_radius*2.5 + 1.25 * cut_radius
+            bond_z = bond_data[bond_idx][6]/2
+            plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
+            output_info.write(f"{bond_data[bond_idx][0]},\t{bond_data[bond_idx][1]},\t{bond_data[bond_idx][2]},\t{bond_data[bond_idx][3]},\t{bond_data[bond_idx][4]},\t{round(bond_data[bond_idx][5],4)},\t{round(bond_data[bond_idx][6],4)},\t{bond_idx//fin_cols+1}\n")
+            bond_idx += 1
+
+
+        # now start new plate(s) is that is required
+        bond_row_max = plate_dim[0]//(cut_radius*2.5)
+        bond_col_max = plate_dim[1]//(cut_radius*2.5)
+        bonds_per_plate = bond_row_max*bond_col_max
+        bond_plate_total = math.ceil((len(bond_data)-bond_idx)/bonds_per_plate) #number of extra plates for just bonds
+        if bond_idx == 0:#handle if no bond files have been created
+            filenum = 0
+        else:
+            filenum = 1
+            output_info.close()#close the previous bond file if it exists
+        for p in range(bond_plate_total):
+            plates.append([])
+            output_info = open(os.path.join(STL_path,f"BondInfo{filenum + p + 1}.txt"), "w")
+            output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
+            while bond_idx-rem_bonds-fin_bonds<min(len(bond_data)-rem_bonds-fin_bonds,bonds_per_plate):
+                bond_x = (bond_idx//bond_col_max) * cut_radius*2 + 1.25*cut_radius #these are the x,y coords of the center between the hemispheres
+                bond_y = (bond_idx%bond_col_max) * cut_radius*2.5 + 1.25 * cut_radius
+                bond_z = bond_data[bond_idx][6]/2
+                plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
+                output_info.write(f"{bond_data[bond_idx][0]},\t{bond_data[bond_idx][1]},\t{bond_data[bond_idx][2]},\t{bond_data[bond_idx][3]},\t{bond_data[bond_idx][4]},\t{bond_data[bond_idx][5]},\t{bond_data[bond_idx][6]},\t{bond_idx//bond_col_max+1}\n")
+                bond_idx += 1   
+            output_info.close()
+        #phase 3: combone all models on buildplate and make STL
 
     if log:
         if len(plates) == 1:
@@ -442,24 +457,21 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
         print(f"Wrote SCAD: {scad_file}")
         if log:
             log.log_message(f'Wrote OpenSCAD file {p_num+1}: {scad_file}', error=False)
-            t = log._render_time_estimate()
             log.log_message(f'Rendering STL file {p_num+1}', error=False)
-            if math.ceil(t)>3:
-                log.log_message(f'Warning. Long rendering time, roughly {math.ceil(t)} minutes', error=True)
-            elif t>1:
-                log.log_message(f'Rendering time, roughly {math.ceil(t)} minutes', error=False)
-            else:
-                log.log_message(f'Rendering time, less than a minute', error=False)
 
         # Export STL using OpenSCAD
         a = subprocess.run([openscad_cmd, "-o", stl_file, scad_file], check=True,capture_output=True,text=True)
         if log:
             log.log_message(f'Wrote STL file {p_num+1}: {stl_file}', error=False)
             log.log_message(f'{a.stderr.splitlines()[4]}\n{a.stderr.splitlines()[7]}', error=False)
-
+            # print(a.stderr)
+        _,hours,mins,secs = a.stderr.splitlines()[4].split(':')
+        time_total += int(hours)*3600 + int(mins) * 60 + float(secs)
         print(f"Exported STL: {stl_file}")
         if log:
             log.log_message(f'STL OpenSCAD file {p_num+1}: {stl_file}', error=False)
-    output_info.close()
+        output_info.close()
+        
     if log:
         log.log_message(f'Export Successful', error=False)
+    log._register_render_time(res,time_total)
