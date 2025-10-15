@@ -11,7 +11,7 @@ from PyQt5 import QtWidgets, QtCore
 import subprocess
 
 def scatter_sphere(ax, x, y, z, r=1, color='b', resolution=15, alpha=0.6):
-        """Scatter spheres at x, y, z with radii r (in data units) on 3D axes."""
+        """Scatter plot of spheres at x, y, z with radii r (in data units) on 3D axes."""
         def plot_sphere(center, radius):
             u = np.linspace(0, 2 * np.pi, resolution)
             v = np.linspace(0, np.pi, resolution)
@@ -236,6 +236,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "Overhang Angle": (0.0, 90.0, 0.5, 45.0, False, True)
         }
 
+        self.min_feature = 0.4 #units of mm. This is the minimum size that your 3d printer can create
+
         # -- Container for parameters
         self.param_container = QtWidgets.QWidget()
         self.param_layout = QtWidgets.QVBoxLayout(self.param_container)
@@ -317,7 +319,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
         # add version label
-        controls.addWidget(QtWidgets.QLabel("Version 1.1"))
+        controls.addWidget(QtWidgets.QLabel("Version 1.2"))
         controls.addStretch()
 
         # Right panel: lattice viewer
@@ -416,9 +418,18 @@ class MainWindow(QtWidgets.QMainWindow):
         openscad_path = self._find_OpenSCAD()
         params = self._collect_params()
         outfile = self.outfile_edit.text().strip()
+
+        #check for errors
         if not outfile:
             self.log_message("No output path selected", error=True)
             return
+        bond_thickness = params["Cut Radius Ratio"] * params["Radius"] * 0.7
+        if bond_thickness < self.min_feature:
+            self.log_message(f"Warning: Small Feature detected (bond thickness is {bond_thickness} mm)", error=True)
+            
+
+
+
         cut_planes = []
         for atom in self.lattice.atoms:
             optimal_plane_normal, _ = SimulatedAnnealingPlanes.simulated_anneal_atoms(atom.bonds)
@@ -484,12 +495,15 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def _render_time_estimate(self):
         atom_num = len(self.lattice.atoms)
+        bond_num = len(self.lattice.bonds)
         params = self._collect_params()
         res = params["Curve Resolution"]
-        a = 0.105#roughly fitted parameters
-        b = 0.02405#roughly fitted parameters
-        c = -0.125#roughly fitted parameters
-        return atom_num*(a*np.exp(b*res)+c)
+        a = 4.9080 #roughly fitted parameters from personal laptop
+        b = 4.0562
+        c = 0.0069
+        d = 0.00050
+        e = 4.3406
+        return ((a*atom_num+b*bond_num)*(c*res+d*res**2) + e)/60 #fitted for seconds, so convert to minutes
 
     def _find_OpenSCAD(self): 
         #this file is meant to allow for recursive calling in order to ensure the correct OpenScad.exe is found
@@ -501,10 +515,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 [openscad_path, "--version"],  # just checking to make sure OpenSCAD exists
                 capture_output=True,
                 text=True,
-                check=True
-            )
+                check=True)
+            
             print(result.stderr.strip())
             return openscad_path
+        
         except FileNotFoundError:
             #run popup to find OpenSCAD
             QtWidgets.QMessageBox.information(
@@ -541,7 +556,7 @@ class MainWindow(QtWidgets.QMainWindow):
             lines = f.readlines()
         line = lines[0]
         if len(line)>14:
-            return line[14:].strip()
+            return line[14:].strip() #this is lazy and does not define me as a coder. If you got this deep and had to see this line of code I sincerely apologize
         else:
             print(f'Failed to read data file line:{lines[0]}')
             return
@@ -550,7 +565,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Add OpenSCAD file to data file
         with open(self.data_path, "r") as f:
             lines = f.readlines()
-        lines.append(f'{res},{t},{len(self.lattice.atoms)},{len(self.lattice.bonds)}\n')
+        lines.append(f'{res},{round(t,3)},{len(self.lattice.atoms)},{len(self.lattice.bonds)}\n')
 
         # Write back
         with open(self.data_path, "w") as f:
@@ -570,3 +585,9 @@ sys.exit(app.exec_())
 
 # command to make reg version
 # python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "C:\Users\blake\Downloads\LogoICO.ico"
+
+#commands to git push (dont make fun of me, I forget how to do this)
+# git pull origin master
+# git add LatticetoSTL.zip 
+# git commit -m "" 
+# git push origin master  

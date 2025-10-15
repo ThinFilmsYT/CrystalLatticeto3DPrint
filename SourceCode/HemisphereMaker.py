@@ -146,10 +146,10 @@ def reorient_angles(normal_v, angles):
             list_ge.append((pol_new, az_new))
     list_flipped = []
     for pol, az in list_ge:#flip hemisphere upright for better 3d printing
-        if az>=np.pi:
-            list_flipped.append((np.pi-pol,az))
-        else:
-            list_flipped.append((np.pi-pol,az))
+        # if az>=np.pi:
+        list_flipped.append((np.pi-pol,2*np.pi-az))
+        # else:
+        #     list_flipped.append((np.pi-pol,az))
 
     return list_lt, list_flipped
 
@@ -251,22 +251,27 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
     if sep: # separate build plate for each type of atom, and separate build plate for the bonds
         atom_kinds = []
         atom_lists = []
-        for atom in atoms:
+        atom_cuts = []
+        for i, atom in enumerate(atoms):
             if atom.element in atom_kinds:
                 atom_lists[atom_kinds.index(atom.element)].append(atom)
+                atom_cuts[atom_kinds.index(atom.element)].append(cut_planes[i])
             else:
                 atom_kinds.append(atom.element)
                 atom_lists.append([atom])
+                atom_cuts.append([cut_planes[i]])
         plates = []
         atom_plates = 0
-        for atom_list in atom_lists:
+        print(atom_kinds)
+        for i, atom_list in enumerate(atom_lists):
+            
             print(atom_list)
             atom_idx = 0 # counter must keep counting regardless of plate number
             atom_print_r = atom_list[0].radius/max_radius*radius*nucleus_scale
             row_max = plate_dim[0]//(atom_print_r*5)
             col_max = plate_dim[1]//(atom_print_r*2.5)
             if (atoms_per_plate:=row_max*col_max)>0:
-                plate_total = math.ceil(len(atoms)/atoms_per_plate)
+                plate_total = math.ceil(len(atom_list)/atoms_per_plate)
             else:
                 print(f'Error: plate too small for radius = {radius}')
                 if log:
@@ -284,7 +289,7 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
                     atom_y = ((atom_idx%atoms_per_plate)%col_max) * atom_print_r*2.5 + 1.25 * atom_print_r
 
                     #get cut angles
-                    cut_angles1,cut_angles2 = reorient_angles(cut_planes[atom_idx],atom.bonds)
+                    cut_angles1,cut_angles2 = reorient_angles(atom_cuts[i][atom_idx],atom.bonds)
                     cuts1 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles1]
                     cuts2 = [cut_cylinder_on_hemisphere(atom_print_r, pol, az, cut_depth, cut_radius) for pol, az in cut_angles2]
 
@@ -315,7 +320,7 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
             output_info = open(os.path.join(STL_path,f"BondInfo{filenum + atom_plates + 1}.txt"), "w")
             output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
             while bond_idx<min(len(bond_data),bonds_per_plate):
-                bond_x = (bond_idx//bond_col_max) * cut_radius*2 + 1.25*cut_radius #these are the x,y coords of the center between the hemispheres
+                bond_x = (bond_idx//bond_col_max) * cut_radius*2.5 + 1.25*cut_radius #these are the x,y coords of the center between the hemispheres
                 bond_y = (bond_idx%bond_col_max) * cut_radius*2.5 + 1.25 * cut_radius
                 bond_z = bond_data[bond_idx][6]/2
                 plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
@@ -390,7 +395,7 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
             if bond_idx == 0: #Start new bond info file. There will be one file per plate, and all these bonds are nessicaroly on the same plate
                 output_info = open(os.path.join(STL_path,f"BondInfo1.txt"), "w")
                 output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
-            bond_x = (bond_idx//rem_cols) * cut_radius*2 + 1.25*cut_radius + new_x_O#these are the x,y coords of the center between the hemispheres
+            bond_x = (bond_idx//rem_cols) * cut_radius*2.5 + 1.25*cut_radius + new_x_O#these are the x,y coords of the center between the hemispheres
             bond_y = (bond_idx%rem_cols) * cut_radius*2.5 + 1.25 * cut_radius + new_y_O#note, the "new origin" is moved to the location of the len(atoms) + 1th location
             bond_z = bond_data[bond_idx][6]/2
             plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
@@ -409,7 +414,7 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
             if bond_idx == 0: #Start new bond info file. There will be one file per plate
                 output_info = open(os.path.join(STL_path,f"BondInfo1.txt"), "w")
                 output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
-            bond_x = (bond_idx//fin_cols) * cut_radius*2 + 1.25*cut_radius + new_x_O2#these are the x,y coords of the center between the hemispheres
+            bond_x = (bond_idx//fin_cols) * cut_radius*2.5 + 1.25*cut_radius + new_x_O2#these are the x,y coords of the center between the hemispheres
             bond_y = (bond_idx%fin_cols) * cut_radius*2.5 + 1.25 * cut_radius
             bond_z = bond_data[bond_idx][6]/2
             plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
@@ -432,7 +437,7 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
             output_info = open(os.path.join(STL_path,f"BondInfo{filenum + p + 1}.txt"), "w")
             output_info.write("Bond Index,\tAtom 1,\tAtom 2,\tAtom 1 Index,\tAtom 2 Index,\tBond Length (Angstrom),\tPrint Bond Length,\tColumn\n")
             while bond_idx-rem_bonds-fin_bonds<min(len(bond_data)-rem_bonds-fin_bonds,bonds_per_plate):
-                bond_x = (bond_idx//bond_col_max) * cut_radius*2 + 1.25*cut_radius #these are the x,y coords of the center between the hemispheres
+                bond_x = (bond_idx//bond_col_max) * cut_radius*2.5 + 1.25*cut_radius #these are the x,y coords of the center between the hemispheres
                 bond_y = (bond_idx%bond_col_max) * cut_radius*2.5 + 1.25 * cut_radius
                 bond_z = bond_data[bond_idx][6]/2
                 plates[-1].append(bond_cylinder(bond_x,-bond_y,bond_z,bond_data[bond_idx][6],cut_radius,tolerance))
@@ -461,6 +466,8 @@ def makeSTL(STL_path,atoms,cut_planes,plate_dim = (210,250),parameters = [],log 
 
         # Export STL using OpenSCAD
         a = subprocess.run([openscad_cmd, "-o", stl_file, scad_file], check=True,capture_output=True,text=True)
+        # print(a.stderr)
+        # print(a.stdout)
         if log:
             log.log_message(f'Wrote STL file {p_num+1}: {stl_file}', error=False)
             log.log_message(f'{a.stderr.splitlines()[4]}\n{a.stderr.splitlines()[7]}', error=False)
