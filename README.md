@@ -68,3 +68,8 @@ Trapeziod Depth Ratio: Trapezoid Depth Ratio is the ratio of the the trapeziodal
 Trapezoid Oblong Ratio: Trapezoid Side Ratio is the ratio of the smallest size of the trapeziod (top) to the the largest size of the trapeziod (base). 1 will make a square
 
 Overhang Angle: To avoid generating supports in the female part, the trapeziodal prismic cut is topped with a pyramid. The base of this pyramid is the trapezoid and the other faces are determined by Overhang Angle. This controls the angle between the base of the pyramid and each upright face. Most extrusion 3D printers can comfortably print features with overhang angles of 45 degrees without supports.
+
+## General Tips and Tricks
+It is generally a good idea to try a test atom and bond. This can be useful to adjust tolerances and sizing. One common problem is [elephant footing](https://help.prusa3d.com/article/elephant-foot-compensation_114487). This is a common 3D printing issue caused by the nozzle's Z position being too close to the bed. This can cause the male part of the hemisphere or any vertically printed bonds to be widened at the bottom. However, this can be useful to provide nice tight, reinsertable bonds or hemispheres. Testing is useful to get a feeling for how this will work before you print an entire lattice.
+
+For cleaned nucleui, it is useful to separate the atoms and bonds. Then, the hemispheres can be printed with no brim, but with supports. When printing vertical bonds, it is useful to use a brim, especially for longer bonds.
