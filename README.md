@@ -72,4 +72,4 @@ Overhang Angle: To avoid generating supports in the female part, the trapeziodal
 ## General Tips and Tricks
 It is generally a good idea to try a test atom and bond. This can be useful to adjust tolerances and sizing. One common problem is [elephant footing](https://help.prusa3d.com/article/elephant-foot-compensation_114487). This is a common 3D printing issue caused by the nozzle's Z position being too close to the bed. This can cause the male part of the hemisphere or any vertically printed bonds to be widened at the bottom. However, this can be useful to provide nice tight, reinsertable bonds or hemispheres. Testing is useful to get a feeling for how this will work before you print an entire lattice.
 
-For cleaned nucleui, it is useful to separate the atoms and bonds. Then, the hemispheres can be printed with no brim, but with supports. When printing vertical bonds, it is useful to use a brim, especially for longer bonds.
+For cleanest nucleui, it is useful to separate the atoms and bonds. Then, the hemispheres can be printed with no brim, but with supports. When printing vertical bonds, it is useful to use a brim, especially for longer bonds.
