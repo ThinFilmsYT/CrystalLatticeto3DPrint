@@ -1,7 +1,7 @@
 # CrystalLatticeto3DPrint
 This repository is meant to be an open source and approachable way to 3D print a model of any crystal lattice. The project is designed to be a resource for teachers, hobbyists, and nerds to print and then investigate a 3D structure in a uniquely enriching way.
 
-Spefically, this software takes a CIF (Crystallographic Information File) file and generate a STL file that can be printed and then assembled.
+Specifically, this software takes a CIF (Crystallographic Information File) file and generate a STL file that can be printed and then assembled.
 
 ## Step 1: Download CIF Online
 There are many online resources where CIF files can be downloaded.
