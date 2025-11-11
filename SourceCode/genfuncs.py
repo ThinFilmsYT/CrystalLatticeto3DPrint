@@ -30,11 +30,57 @@ class Atom:
         if type(coord) is int:
             coord = int_to_roman(coord)
         data = self.read_ele_data()
+        try: #ensure we have element data
+            data[ele]
+        except KeyError:#not much we can do. raise error
+            print(f'Element, {ele}, not found :(')
+            raise KeyError
+        try:
+            data[ele][charge]
+        except KeyError:#try to find nearest chargest
+            print(f'Charge, {ele}{charge}, not found :(')
+            distance = 1
+            chars= []
+            while len(chars) == 0:
+                if str(int(charge)+distance) in data[ele]:
+                    chars.append(str(int(charge)+distance))
+                if str(int(charge)-distance) in data[ele]:
+                    chars.append(str(int(charge)+distance))
+                distance+=1
+            if len(chars) == 1:
+                print(f'Next closest charge is {chars[0]}.')
+            elif len(chars) == 2:
+                print(f'Closest charges are {chars[0]} and {chars[1]}. Picking {chars[0]}')
+            charge = chars[0] #this is not optimal, but should provide decent alternative to just crashing
+
+
+
         if charge == '0': #for covalent crystals
-            return data[ele][charge][info] #simple. ignoring coordination number
+            return data[ele][charge][info] #simple. ignoring coordination number (dont have coord info lol)
         else: #for ions
             if coord != '':#given coordination number
-                coord_info = data[ele][charge][coord]
+                try:
+                    coord_info = data[ele][charge][coord]
+                except KeyError: #if the coord number is not in the database, try to get close enough
+                    charge_info = data[ele][charge]
+                    if len(charge_info) == 1:
+                        for c in charge_info: # coinvinent way to grab only coord value
+                            coord_info = data[ele][charge][c] # use the only coord info that it has
+                    else:
+                        distance = 1
+                        coords= []
+                        while len(coords) == 0:
+                            if int_to_roman(roman_to_int(coord)+distance) in data[ele][charge]:
+                                coords.append(int_to_roman(roman_to_int(coord)+distance))
+                            if int(roman_to_int(coord))-distance >0 and str(int(roman_to_int(coord))-distance) in data[ele]:
+                                coords.append(int_to_roman(roman_to_int(coord)+distance))
+                            distance+=1
+                        if len(coords) == 1:
+                            print(f'Next closest coordination number is {coords[0]}.')
+                        elif len(coords) == 2:
+                            print(f'Closest coordination numbers are {coords[0]} and {coords[1]}. Picking {coords[0]}')
+                        coord = coord_info = data[ele][charge][coords[0]] #this is not optimal, but should provide decent alternative to just crashing
+
                 if len(coord_info) == 4: #no spin state data
                     return coord_info[info]
                 elif len(coord_info) == 2: #has data for High and Low spin states
@@ -111,9 +157,9 @@ class Lattice:
                             atoms.append(Atom(ele_name, charge,fx,fy,fz,raw_atom[4]))
                             seen.add((fx,fy,fz))
         
-        self.add_atoms(atoms) #add Atom objects 
+        self.add_atoms(atoms) #add Atom objects
         self.bonds = self.find_bonds(self.atoms,self.atoms) #find bonds
-        # self.refine_atomic_radii()
+        self.refine_atomic_radii()
 
     def read_cif(self,path):
         with open(path, 'r') as f:
@@ -260,6 +306,9 @@ class Lattice:
 
         #now bonds contains all the bond info, time to add the info to each atom
         for i, atom in enumerate(core_atoms):
+            atom.bonds = []
+            atom.bond_atom_sizes = []
+            atom.bond_atom_idxs = []
             for b in bonds:
                 if i in b:
                     if max(b)<len(core_atoms): #only take bonds of core atoms
@@ -330,28 +379,34 @@ class Lattice:
    
     def bond_coords(self, atom1,atom2):
         """
-        Convert vector Q-P from skewed basis (a,b,c) to spherical coords in an
-        orthonormal basis where:
-            a is along +z axis
-            b is in xz plane
-        Output angles in radians.
+        Convert vector Q-P from fractional (a,b,c) coordinates into spherical
+        coordinates in an orthonormal Cartesian basis where:
+            a is along +x axis
+            b lies in the xy-plane
+        Output angles are in radians.
         Returns (r, theta, phi).
         """
         P = atom1.fractional_position()
         Q = atom2.fractional_position()
-        # Step 1: basis vectors in orthonormal Cartesian coords
-        a_vec = (0.0, 0.0, self.a)
+        # --- Step 2: Define lattice vectors in Cartesian space ---
+        # a along +x
+        a_vec = (self.a, 0.0, 0.0)
 
-        b_vec = (self.b * np.sin(np.radians(self.gamma)), 0.0, self.b * np.cos(np.radians(self.gamma)))
+        # b lies in xy-plane, forming angle γ with a
+        b_vec = (
+            self.b * np.cos(np.radians(self.gamma)),
+            self.b * np.sin(np.radians(self.gamma)),
+            0.0
+        )
 
-        # Find c_vec coordinates:
-        # Let c_vec = (cx, cy, cz)
-        cz = self.c * np.cos(np.radians(self.beta)) # from a · c
-        cx = (self.b * self.c * np.cos(np.radians(self.alpha)) - b_vec[2] * cz) / b_vec[0]
-        cy_sq = self.c**2 - cx**2 - cz**2
-        if cy_sq < 0:
-            cy_sq = 0  # numerical tolerance
-        cy = np.sqrt(cy_sq)
+        # c is determined from α, β, γ (general triclinic geometry)
+        # Let c = (cx, cy, cz)
+        cx = self.c * np.cos(np.radians(self.beta))
+        cy = (self.c * (np.cos(np.radians(self.alpha)) - np.cos(np.radians(self.beta)) * np.cos(np.radians(self.gamma)))) / np.sin(np.radians(self.gamma))
+        cz_sq = self.c**2 - cx**2 - cy**2
+        if cz_sq < 0:
+            cz_sq = 0.0  # numerical tolerance
+        cz = np.sqrt(cz_sq)
 
         c_vec = (cx, cy, cz)
 
@@ -672,3 +727,27 @@ def int_to_roman(num: int) -> str:
         roman.append(syms[i] * count)
 
     return "".join(roman)
+
+def roman_to_int(s: str) -> int:
+    roman_map = {
+        'I': 1,
+        'V': 5,
+        'X': 10,
+        'L': 50,
+        'C': 100,
+        'D': 500,
+        'M': 1000
+    }
+    
+    total = 0
+    prev_value = 0
+    
+    for ch in reversed(s.upper()):  # process from right to left
+        value = roman_map[ch]
+        if value < prev_value:
+            total -= value
+        else:
+            total += value
+        prev_value = value
+    
+    return total

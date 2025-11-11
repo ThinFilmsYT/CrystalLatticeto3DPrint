@@ -224,11 +224,11 @@ class MainWindow(QtWidgets.QMainWindow):
             "Curve Resolution": (3, 500, 1, 50, False, False),
             "Buildplate Length": (10, 1000, 10, 210, False, False),
             "Buildplate Width": (10, 1000, 10, 250, False, False),
-            "Radius": (0.1, 30.0, 0.1, 15.0, False, False),
-            "Nucleus Scale": (.01, 1.0, .01, 1.0, False, False),
+            "Radius": (0.1, 50.0, 0.1, 20.0, False, False),
+            "Nucleus Scale": (.01, 1.0, .01, 0.75, False, False),
             "Bond Range": (0.0, 1, 0.01, 0.1, False, True),
-            "Tolerance": (0.0, 1.0, 0.01, 0.1, False, True),
-            "Cut Depth Ratio": (0.01, 1.0, 0.01, 0.25, False, True),
+            "Tolerance": (0, 1.0, 0.01, 0.05, False, True),
+            "Cut Depth Ratio": (0.01, 1, 0.01, 0.4, False, True),
             "Cut Radius Ratio": (0.01, 1.0, 0.01, 0.16, False, True),
             "Trapezoid Side Ratio": (0.01, 1.0, 0.01, 0.33, False, True),
             "Trapezoid Depth Ratio": (0.01, 1.0, 0.01, 0.2, False, True),
@@ -270,27 +270,49 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_slider_layout(advanced=False)
 
 
+        # -- Checkbox controls row
+        checkbox_row = QtWidgets.QWidget()
+        checkbox_layout = QtWidgets.QHBoxLayout(checkbox_row)
+        checkbox_layout.setContentsMargins(0, 0, 0, 0)
+
         # -- Bonds checkbox
         self.bonds_checkbox = QtWidgets.QCheckBox("Show bonds")
         self.bonds_checkbox.setVisible(False)
         self.bonds_checkbox.stateChanged.connect(self._toggle_bonds)
-        controls.addWidget(self.bonds_checkbox)
+        checkbox_layout.addWidget(self.bonds_checkbox)
+
+        # -- Separate Unique atoms and bonds toggle
+        self.separate_checkbox = QtWidgets.QCheckBox("Separate atom types and bonds")
+        self.separate_checkbox.stateChanged.connect(self._separate_atoms)
+        self.separate_checkbox.setVisible(False)
+        checkbox_layout.addWidget(self.separate_checkbox)
 
         # -- Beginner/Advanced toggle
         self.mode_checkbox = QtWidgets.QCheckBox("Advanced mode")
         self.mode_checkbox.stateChanged.connect(self._on_mode_change)
         self.mode_checkbox.setVisible(False)
-        controls.addWidget(self.mode_checkbox)
+        checkbox_layout.addWidget(self.mode_checkbox)
 
-        # -- Separate Unique atoms and bonds toggle
-        self.separate_checkbox = QtWidgets.QCheckBox("Separate atoms types and bonds")
-        self.separate_checkbox.stateChanged.connect(self._separate_atoms)
-        self.separate_checkbox.setVisible(False)
-        controls.addWidget(self.separate_checkbox)
+        # Add the row of checkboxes to your existing controls layout
+        controls.addWidget(checkbox_row)
+
+        # -- Bond toggle
+        self.bond_widget = QtWidgets.QWidget()  # container so we can hide/show as one block
+        bond_layout = QtWidgets.QHBoxLayout(self.bond_widget)
+        bond_layout.setContentsMargins(0, 0, 0, 0)
+        bond_layout.addWidget(QtWidgets.QLabel("Bond Cross Section:"))
+        self.circ_radio = QtWidgets.QRadioButton("Circle")
+        self.d_radio = QtWidgets.QRadioButton("D")
+        self.circ_radio.setChecked(True)
+        bond_layout.addWidget(self.circ_radio)
+        bond_layout.addWidget(self.d_radio)
+        controls.addWidget(self.bond_widget)
+        self.bond_widget.hide()  # hidden at startup
 
         # -- Units toggle
         self.unit_widget = QtWidgets.QWidget()  # container so we can hide/show as one block
         unit_layout = QtWidgets.QHBoxLayout(self.unit_widget)
+        unit_layout.setContentsMargins(0, 0, 0, 0)
         unit_layout.addWidget(QtWidgets.QLabel("Units:"))
         self.mm_radio = QtWidgets.QRadioButton("mm")
         self.in_radio = QtWidgets.QRadioButton("inches")
@@ -313,13 +335,12 @@ class MainWindow(QtWidgets.QMainWindow):
         # -- Log box
         self.log_box = QtWidgets.QTextEdit()
         self.log_box.setReadOnly(True)
-        # self.log_box.setMinimumHeight(150)
         controls.addWidget(QtWidgets.QLabel("Log:"))
         controls.addWidget(self.log_box)
 
 
         # add version label
-        controls.addWidget(QtWidgets.QLabel("Version 1.2"))
+        controls.addWidget(QtWidgets.QLabel("Version 2.0"))
         controls.addStretch()
 
         # Right panel: lattice viewer
@@ -397,6 +418,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.mode_checkbox.setVisible(True)
                 self.separate_checkbox.setVisible(True)
                 self.unit_widget.show()
+                self.bond_widget.show()
                 self.out_widget.show()
                 self.bonds_checkbox.setVisible(True)
                 self._apply_slider_layout(advanced=False)
@@ -426,10 +448,6 @@ class MainWindow(QtWidgets.QMainWindow):
         bond_thickness = params["Cut Radius Ratio"] * params["Radius"] * 0.7
         if bond_thickness < self.min_feature:
             self.log_message(f"Warning: Small Feature detected (bond thickness is {bond_thickness} mm)", error=True)
-            
-
-
-
         cut_planes = []
         for atom in self.lattice.atoms:
             optimal_plane_normal, _ = SimulatedAnnealingPlanes.simulated_anneal_atoms(atom.bonds)
@@ -446,7 +464,13 @@ class MainWindow(QtWidgets.QMainWindow):
             params["Trapezoid Oblong Ratio"],#ratio of height of short trap leg to long trap leg
             params["Overhang Angle"]#degrees, internal pryamid that prevents supports in female hemisphere. Should be >45 and <90
         ]
-        HemisphereMaker.makeSTL(outfile,self.lattice.atoms,cut_planes,plate_dim=(params['Buildplate Length'],params['Buildplate Width']),parameters=ps,log=self, sep = self.separate_checkbox.isChecked(),openscad_cmd = openscad_path)
+        bond_type = 'circle'
+        if self.d_radio.isChecked():
+            bond_type = 'd'
+        elif self.circ_radio.isChecked():
+            bond_type = 'circle'
+        #main workhorse file conversion function
+        HemisphereMaker.makeSTL(outfile,self.lattice.atoms,cut_planes,plate_dim=(params['Buildplate Length'],params['Buildplate Width']),parameters=ps,log=self, sep = self.separate_checkbox.isChecked(),openscad_cmd = openscad_path,bondtype=bond_type)
 
     def _toggle_bonds(self, state):
         """Toggle bond drawing in the 3D lattice."""
