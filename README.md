@@ -14,13 +14,17 @@ There are many online resources where CIF files can be downloaded.
 
 
 ## Step 2: Download OpenSCAD
-The free [OpenSCAD software](https://openscad.org/) can be controlled with python to generate 3D printable files. After downloading, install the OpenSCAD. For windows, the program will automatically try to find OpenSCAD at the path "C:/Program Files/OpenSCAD/openscad.exe", which is the default installation path. If the program cannot find OpenSCAD, it will prompt the user to find the OpenSCAD.exe file.
+The free [OpenSCAD software](https://openscad.org/) can be controlled with python to generate 3D printable files. After downloading, install the OpenSCAD. For windows, the program will automatically try to find OpenSCAD at the path "C:/Program Files/OpenSCAD/openscad.exe", which is the default installation path. For mac, the program will look for OpenSCAD at /Applications/ folder. If the program cannot find OpenSCAD, it will prompt the user to find the .exe or .app file.
 
-## Step 3: Download LatticetoSTL.zip
-Download LatticetoSTL.zip from this repository; this version is currently only for windows. After downloading, extract it into a new folder (Note, all files in the folder must remain in the same directory as the .exe for the program to work)
+## Step 3: Download LatticetoSTL
+For windows, download LatticetoSTL.zip from this repository. After downloading, extract it into a new folder (Note, all files in the folder must remain in the same directory as the .exe for the program to work)
 
-## Step 4: Run LatticetoSTL.exe
-The software is now ready to go! Here will give a brief tutorial on using the software as well as clarifying details about the functionality of the program, as well as some general tips and tricks.
+For mac, download the .dmg file, and drag the LatticetoSTL into the Applications folder.
+
+## Step 4: Run LatticetoSTL
+The software is now ready to go! Here will give a brief tutorial on using the software as well as clarifying details about the functionality of the program, as well as some general tips and tricks. 
+
+Important note, the software can be slow on start up. It needs to open some unfortunately bulky python packages, but after opening should be much faster.
 
 ### Generating a Lattice
 
@@ -81,3 +85,5 @@ It is quite easy to print too small. Printed atomic radii of about 15mm is a goo
 For cleanest nuclei with circle bonds, it is useful to separate the atoms and bonds. Then, the hemispheres can be printed with no brim, but with supports. When printing vertical bonds, it is useful to use a brim, especially for the tall vertically printed bonds.
 
 In order to use the provided txt docs to their full potential, it is often useful to label the atoms. I like to number the flat faces of the hemispheres with a permanent marker before removing the supports from the male parts. This is especially useful for the D shaft bond mode. The atoms are numbered with increasing numbers down the column (negative y direction). Once a column is full, a new column is started to the right (x direction). OpenSCAD has built-in axes to verify atom numbering. Bond numbering follows the same scheme.
+
+
