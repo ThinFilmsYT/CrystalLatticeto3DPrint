@@ -1,6 +1,8 @@
 import json
 import numpy as np
 import math
+import sys
+import os
 
 class Atom:
     def __init__(self,element,charge,x,y,z,occ=1):
@@ -21,7 +23,11 @@ class Atom:
         return (self.x, self.y, self.z)
     
     def read_ele_data(self):
-        with open('ElementalRadiiData.json') as f:
+        if sys.platform == "darwin":
+            path = resource_path('ElementalRadiiData.json')
+        else:
+            path = 'ElementalRadiiData.json'
+        with open(path) as f:
             out = f.read()
         return json.loads(out)
 
@@ -751,3 +757,22 @@ def roman_to_int(s: str) -> int:
         prev_value = value
     
     return total
+
+# find files for mac only. find  stuff i put into Resources folder
+def resource_path(filename: str) -> str:
+    """
+    Returns the absolute path to a resource inside the app bundle.
+    Works in:
+      - PyInstaller macOS .app bundles
+      - PyInstaller one-file EXE
+      - Normal Python scripts
+    """
+    # Case 1: Running inside a macOS PyInstaller .app bundle
+    if getattr(sys, 'frozen', False):
+        # Inside .app: sys._MEIPASS is not used; instead use the bundle structure
+        bundle_path = os.path.dirname(sys.executable)  # .../YourApp.app/Contents/MacOS
+        resources = os.path.join(bundle_path, '..', 'Resources')
+        return os.path.abspath(os.path.join(resources, filename))
+
+    # Case 2: Running normally (not frozen)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), filename))

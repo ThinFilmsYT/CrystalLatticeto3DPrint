@@ -1,4 +1,4 @@
-import sys
+
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import numpy as np
@@ -9,6 +9,8 @@ from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d import Axes3D
 from PyQt5 import QtWidgets, QtCore
 import subprocess
+
+
 
 def scatter_sphere(ax, x, y, z, r=1, color='b', resolution=15, alpha=0.6):
         """Scatter plot of spheres at x, y, z with radii r (in data units) on 3D axes."""
@@ -175,7 +177,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Crystal Lattice GUI")
-        self.data_path = 'CustomData.dat'
+        if sys.platform == "darwin":
+            self.data_path = resource_path('CustomData.dat')
+        else:
+            self.data_path = 'CustomData.dat'
         # self.resize(1150, 780)
 
         # Store unit mode (internal is always mm)
@@ -340,7 +345,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
         # add version label
-        controls.addWidget(QtWidgets.QLabel("Version 2.0"))
+        controls.addWidget(QtWidgets.QLabel("Version 2.1"))
         controls.addStretch()
 
         # Right panel: lattice viewer
@@ -533,7 +538,17 @@ class MainWindow(QtWidgets.QMainWindow):
         #this file is meant to allow for recursive calling in order to ensure the correct OpenScad.exe is found
         
         openscad_path = self._get_datafile_path(self.data_path) #get path from custom data file
-
+        print(openscad_path)
+        if sys.platform == "darwin" and os.path.isdir(openscad_path): #mac is endlessly annoying :(
+            macos_dir = os.path.join(openscad_path, "Contents", "MacOS")
+            print(macos_dir)
+            if os.path.isdir(macos_dir):
+                # Find the first file in MacOS/ that is executable
+                for entry in os.listdir(macos_dir):
+                    print(entry)
+                    full = os.path.join(macos_dir, entry)
+                    if os.path.isfile(full) and os.access(full, os.X_OK):
+                        openscad_path = full
         try:
             result = subprocess.run(
                 [openscad_path, "--version"],  # just checking to make sure OpenSCAD exists
@@ -551,9 +566,9 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             openscad_path2, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self,
-                "Select OpenSCAD.exe file",
+                "Select OpenSCAD Application file",
                 "",
-                "EXE files (*.exe);;All files (*)"
+                "All files (*)"
             )
 
             if not openscad_path2: #if close prompt without giving path
@@ -606,9 +621,13 @@ sys.exit(app.exec_())
 
 # command to make debugging
 # python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "C:\Users\blake\Downloads\LogoICO.ico" -d all --console
+# python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "/Users/hopehansen/Documents/BlakesFunExcitingCodingAdventures/LogoICO.icns" -d all --console
 
 # command to make reg version
 # python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "C:\Users\blake\Downloads\LogoICO.ico"
+# python -m PyInstaller LatticetoSTL.py --onefile --windowed -i "/Users/hopehansen/Documents/BlakesFunExcitingCodingAdventures/LogoICO.icns"
+# hdiutil create -volname "LatticetoSTL" -srcfolder "dist/LatticetoSTL.app" -ov -format UDZO "LatticetoSTL.dmg"
+
 
 #commands to git push (dont make fun of me, I forget how to do this)
 # git pull origin master
