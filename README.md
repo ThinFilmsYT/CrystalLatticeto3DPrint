@@ -24,7 +24,7 @@ For mac, download the .dmg file, and drag the LatticetoSTL into the Applications
 ## Step 4: Run LatticetoSTL
 The software is now ready to go! Here will give a brief tutorial on using the software as well as clarifying details about the functionality of the program, as well as some general tips and tricks. 
 
-Important note, the software can be slow on start up. It needs to open some unfortunately bulky python packages, but after opening should be much faster.
+Important note, the software can be slow on start up. It needs to open some unfortunately bulky python packages but after opening should be much faster.
 
 ### Generating a Lattice
 
